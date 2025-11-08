@@ -1,11 +1,17 @@
-name: CI/CD - build & deploy
+name: CI/CD - build & deploy to GKE (free-tier)
+
 on:
   push:
     branches: [ main ]
+
 env:
   REGION: us-central1
   REPO: hackathon-repo
   TAG: latest
+  ZONE: us-central1-a
+  CLUSTER: hack-gke-cluster
+  PROJECT: ${{ secrets.GCP_PROJECT }}
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -14,11 +20,23 @@ jobs:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
-      - name: Set project
-        run: gcloud config set project ${{ secrets.GCP_PROJECT }}
-      - name: Build & push images
-        run: ./scripts/build-and-push.sh
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Configure gcloud
+        run: |
+          gcloud config set project ${{ secrets.GCP_PROJECT }}
+          gcloud config set builds/region ${{ env.REGION }}
+      - name: Build & push patient-service
+        run: |
+          gcloud builds submit ./patient-service --tag=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/patient-service:${{ env.TAG }}
+      - name: Build & push application-service
+        run: |
+          gcloud builds submit ./application-service --tag=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/application-service:${{ env.TAG }}
+      - name: Build and push order-service
+        run: |
+          pushd order-service
+          mvn -DskipTests package
+          popd
+          gcloud builds submit ./order-service --tag=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/order-service:${{ env.TAG }}
 
   deploy:
     needs: build-and-push
@@ -29,8 +47,23 @@ jobs:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
-      - name: Set project & deploy
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Configure gcloud & get credentials
         run: |
           gcloud config set project ${{ secrets.GCP_PROJECT }}
-          ./scripts/deploy-k8s.sh
+          gcloud container clusters get-credentials ${{ env.CLUSTER }} --zone ${{ env.ZONE }}
+      - name: Replace image placeholders
+        run: |
+          sed -i "s|__IMAGE_PATIENT__|${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/patient-service:${{ env.TAG }}|g" k8s/*.yaml
+          sed -i "s|__IMAGE_APPOINTMENT__|${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/application-service:${{ env.TAG }}|g" k8s/*.yaml
+          sed -i "s|__IMAGE_ORDER__|${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/order-service:${{ env.TAG }}|g" k8s/*.yaml
+      - name: Apply k8s manifests
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/patient-deployment.yaml
+          kubectl apply -f k8s/application-deployment.yaml
+          kubectl apply -f k8s/order-deployment.yaml
+      - name: Post-deploy check
+        run: |
+          kubectl get pods -n hackathon -o wide || true
+          kubectl get svc -n hackathon -o wide || true

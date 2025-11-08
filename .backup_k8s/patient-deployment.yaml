@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: patient-deployment
+  namespace: hackathon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: patient-service
+  template:
+    metadata:
+      labels:
+        app: patient-service
+    spec:
+      containers:
+      - name: patient-service
+        image: us-central1-docker.pkg.dev/empyrean-backup-477606-k8/hackathon-repo/patient-service:latest
+        ports:
+        - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patient-lb
+  namespace: hackathon
+spec:
+  type: LoadBalancer
+  selector:
+    app: patient-service
+  ports:
+  - port: 80
+    targetPort: 3000
