@@ -1,4 +1,19 @@
-.DS*
-.class*
-.jar
-.ear
+# Java / Maven
+order-service/target/
+*.class
+*.jar
+
+# Node
+**/node_modules/
+npm-debug.log
+package-lock.json
+
+# IDE / OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+.env
+
+# Cloud Build / temp
+*.tgz
