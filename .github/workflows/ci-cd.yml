@@ -1,6 +1,7 @@
 name: CI/CD - build & deploy to GKE (free-tier)
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
 
