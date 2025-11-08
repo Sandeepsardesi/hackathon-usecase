@@ -1,6 +1,7 @@
 name: CI/CD - build & deploy to GKE (free-tier)
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -17,12 +18,14 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+  workflow_dispatch:
     steps:
       - uses: actions/checkout@v4
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+  workflow_dispatch:
       - name: Configure gcloud
         run: |
           gcloud config set project ${{ secrets.GCP_PROJECT }}
@@ -43,6 +46,7 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+  workflow_dispatch:
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +54,7 @@ jobs:
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+  workflow_dispatch:
       - name: Configure gcloud & get credentials
         run: |
           gcloud config set project ${{ secrets.GCP_PROJECT }}
