@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: order-service
-        image: __IMAGE_ORDER__
+        image: us-central1-docker.pkg.dev/empyrean-backup-477606-k8/hackathon-repo/order-service:latest
         ports:
         - containerPort: 8080
 ---

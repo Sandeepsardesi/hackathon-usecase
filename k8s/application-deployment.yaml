@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: application-service
-        image: __IMAGE_APPOINTMENT__
+        image: us-central1-docker.pkg.dev/empyrean-backup-477606-k8/hackathon-repo/application-service:latest
         ports:
         - containerPort: 3001
 ---

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: patient-service
-        image: __IMAGE_PATIENT__
+        image: us-central1-docker.pkg.dev/empyrean-backup-477606-k8/hackathon-repo/patient-service:latest
         ports:
         - containerPort: 3000
 ---
