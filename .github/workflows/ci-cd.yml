@@ -1,36 +1,65 @@
-name: CI/CD - build & deploy
+name: CI/CD — build & deploy to Cloud Run
+
 on:
   push:
     branches: [ main ]
+
 env:
   REGION: us-central1
   REPO: hackathon-repo
   TAG: latest
-jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
-      - name: Set project
-        run: gcloud config set project ${{ secrets.GCP_PROJECT }}
-      - name: Build & push images
-        run: ./scripts/build-and-push.sh
+  PROJECT: ${{ secrets.GCP_PROJECT }}
 
-  deploy:
-    needs: build-and-push
+jobs:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
-      - name: Set project & deploy
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure gcloud project
         run: |
           gcloud config set project ${{ secrets.GCP_PROJECT }}
-          ./scripts/deploy-k8s.sh
+          gcloud config set run/region ${{ env.REGION }}
+
+      - name: Build and push patient-service image (Cloud Build)
+        run: |
+          gcloud builds submit ./patient-service \
+            --tag=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/patient-service:${{ env.TAG }}
+
+      - name: Build and push application-service image (Cloud Build)
+        run: |
+          gcloud builds submit ./application-service \
+            --tag=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/application-service:${{ env.TAG }}
+
+      - name: Build order-service jar & image, push (Cloud Build)
+        run: |
+          pushd order-service
+          mvn -DskipTests package
+          popd
+          gcloud builds submit ./order-service \
+            --tag=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/order-service:${{ env.TAG }}
+
+      - name: Deploy patient-service to Cloud Run
+        run: |
+          gcloud run deploy patient-service \
+            --image=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/patient-service:${{ env.TAG }} \
+            --platform=managed --region=${{ env.REGION }} --allow-unauthenticated
+
+      - name: Deploy application-service to Cloud Run
+        run: |
+          gcloud run deploy application-service \
+            --image=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/application-service:${{ env.TAG }} \
+            --platform=managed --region=${{ env.REGION }} --allow-unauthenticated
+
+      - name: Deploy order-service to Cloud Run
+        run: |
+          gcloud run deploy order-service \
+            --image=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ env.REPO }}/order-service:${{ env.TAG }} \
+            --platform=managed --region=${{ env.REGION }} --allow-unauthenticated
+
