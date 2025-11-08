@@ -1,50 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT=${PROJECT:-empyrean-backup-477606-k8}
-REGION=${REGION:-us-central1}
-REPO=${REPO:-hackathon-repo}
-TAG=${TAG:-latest}
-NS=${NS:-hackathon}
+NAMESPACE=hackathon
 
-echo "Project: $PROJECT"
-echo "Artifact Registry images:"
-gcloud artifacts docker images list ${REGION}-docker.pkg.dev/${PROJECT}/${REPO} --project=${PROJECT} || true
-echo
+echo "Applying k8s manifests..."
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/application-deployment.yaml
+kubectl apply -f k8s/patient-deployment.yaml
+kubectl apply -f k8s/order-deployment.yaml
 
-echo "Kubernetes Services in namespace $NS:"
-kubectl get svc -n ${NS} -o wide || true
-echo
+echo "Waiting for rollouts..."
+kubectl rollout status deploy/application-deployment -n ${NAMESPACE} --timeout=120s
+kubectl rollout status deploy/patient-deployment -n ${NAMESPACE} --timeout=120s
+kubectl rollout status deploy/order-deployment -n ${NAMESPACE} --timeout=120s
 
-echo "External IPs (curl health endpoints):"
-PATIENT_IP=$(kubectl get svc patient-lb -n ${NS} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-APP_IP=$(kubectl get svc application-lb -n ${NS} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-ORDER_IP=$(kubectl get svc order-lb -n ${NS} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+echo "Services:"
+kubectl get svc -n ${NAMESPACE} -o wide
 
-echo "patient-lb: $PATIENT_IP"
-echo "application-lb: $APP_IP"
-echo "order-lb: $ORDER_IP"
-echo
+echo "Pods:"
+kubectl get pods -n ${NAMESPACE} -o wide
 
-echo "Testing endpoints (first try external IPs):"
-if [ -n "$PATIENT_IP" ]; then
-  echo -n "Patient /health -> "
-  curl -sS http://$PATIENT_IP/health || echo "FAILED"
-fi
+echo "Health checks (via port-forward to localhost for a short time):"
+kubectl port-forward -n ${NAMESPACE} svc/patient-lb 8080:80 &
+PF1=$!
+sleep 1
+curl -sS http://localhost:8080/health || echo "patient /health no response"
+kill $PF1 || true
 
-if [ -n "$APP_IP" ]; then
-  echo -n "Application /health -> "
-  curl -sS http://$APP_IP/health || echo "FAILED"
-fi
+kubectl port-forward -n ${NAMESPACE} svc/application-lb 8081:80 &
+PF2=$!
+sleep 1
+curl -sS http://localhost:8081/health || echo "application /health no response"
+kill $PF2 || true
 
-if [ -n "$ORDER_IP" ]; then
-  echo -n "Order /actuator/health -> "
-  curl -sS http://$ORDER_IP/actuator/health || echo "FAILED or 404"
-fi
-
-echo
-echo "If external IPs are not available or you want local testing, run (in Cloud Shell):"
-echo "  kubectl port-forward -n ${NS} svc/patient-lb 8080:80 &"
-echo "  kubectl port-forward -n ${NS} svc/application-lb 8081:80 &"
-echo "  kubectl port-forward -n ${NS} svc/order-lb 8082:80 &"
-echo "then curl http://localhost:8080/health , http://localhost:8081/health , http://localhost:8082/actuator/health"
+echo "Demo complete."
